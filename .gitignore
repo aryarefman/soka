@@ -8,6 +8,10 @@ build/
 .vscode/
 *.swp
 *.swo
+bin/
+.settings/
+.project
+.classpath
 
 # OS files
 Thumbs.db
