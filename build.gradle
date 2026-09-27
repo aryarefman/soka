@@ -1,0 +1,53 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'com.kelompok8'
+version = '1.0-SNAPSHOT'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // CloudSim Plus 8.0.0
+    implementation 'org.cloudsimplus:cloudsimplus:8.0.0'
+
+    // SLF4J for logging (required by CloudSim Plus)
+    implementation 'ch.qos.logback:logback-classic:1.4.14'
+}
+
+application {
+    mainClass = 'com.kelompok8.MainSimulation'
+}
+
+// Task to run with specific scheduler
+tasks.register('runFCFS', JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.kelompok8.MainSimulation'
+    args = ['FCFS']
+}
+
+tasks.register('runRoundRobin', JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.kelompok8.MainSimulation'
+    args = ['RR']
+}
+
+tasks.register('runPEFT', JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.kelompok8.MainSimulation'
+    args = ['PEFT']
+}
+
+tasks.register('runAll', JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.kelompok8.MainSimulation'
+    args = ['ALL']
+}
