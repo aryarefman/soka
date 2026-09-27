@@ -51,3 +51,4 @@ tasks.register('runAll', JavaExec) {
     mainClass = 'com.kelompok8.MainSimulation'
     args = ['ALL']
 }
+
