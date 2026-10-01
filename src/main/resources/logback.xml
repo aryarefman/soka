@@ -8,7 +8,7 @@
         </encoder>
     </appender>
 
-    <!-- Suppress all CloudSim Plus internal logging -->
+    <!-- Suppress CloudSim Plus internal event logging for clean output -->
     <logger name="org.cloudsimplus" level="ERROR"/>
     <logger name="org.cloudbus" level="ERROR"/>
 

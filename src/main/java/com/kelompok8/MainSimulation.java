@@ -11,19 +11,21 @@ import java.nio.file.*;
 import java.util.*;
 
 /**
- * Simulasi Utama - Optimasi Penjadwalan Task pada Komputasi Awan
+ * Simulasi Utama - Optimasi Penjadwalan Task pada Komputasi Awan (Multi-Datacenter)
  *
  * Kelompok 8 - Strategi Optimasi Komputasi Awan
  * Departemen Teknologi Informasi, Institut Teknologi Sepuluh Nopember (ITS)
  *
- * Tugas:
- * 2. Bangun datacenter sesuai tugas sebelumnya di simulator.
- * 3. Implementasikan algoritma yang dipilih di simulator (PEFT).
- * 4. Jalankan ujicoba sesuai dengan dataset yang diajukan di minggu 3 (Sintetis & Real Trace NASA iPSC).
+ * Arsitektur:
+ * - 3 Datacenter Heterogen (Entry-Level, Standard, Premium)
+ * - Total 24 Host heterogen (8 host / DC) dengan model daya SPECpower
+ * - Total 30 VM heterogen (10 Small, 10 Medium, 10 Large)
+ * - Sinkronisasi: Semua VM dari 3 DC dikelola dan disinkronisasikan di akhir simulasi.
  *
- * Baseline:
- * - FCFS (First Come First Served)
- * - Round Robin
+ * Algoritma:
+ * - PEFT (Predict Earliest Finish Time) - Diusulkan
+ * - FCFS (First Come First Served) - Baseline 1
+ * - Round Robin - Baseline 2
  */
 public class MainSimulation {
 
@@ -39,24 +41,31 @@ public class MainSimulation {
         Files.createDirectories(Path.of(RESULTS_DIR));
 
         List<MetricsCollector.ExperimentResult> allResults = new ArrayList<>();
+        List<DatacenterSynchronizer.MultiDatacenterSyncReport> allSyncReports = new ArrayList<>();
 
         // =========================================================================
         // SKENARIO 1: DATASET SINTETIS (1000 Task)
         // =========================================================================
         System.out.println("\n" + "=".repeat(75));
-        System.out.println("  SKENARIO 1: DATASET SINTETIS (1000 TASKS - 3 KELAS UKURAN)");
+        System.out.println("  SKENARIO 1: DATASET SINTETIS (1000 TASKS - 3 KELAS UKURAN) [3 DATACENTER]");
         System.out.println("=".repeat(75));
 
         List<MetricsCollector.ExperimentResult> syntheticResults = new ArrayList<>();
 
         if (mode.equals("ALL") || mode.equals("PEFT")) {
-            syntheticResults.add(runExperiment("PEFT", "Synthetic", null));
+            SimulationOutcome out = runExperiment("PEFT", "Synthetic", null);
+            syntheticResults.add(out.metricResult());
+            allSyncReports.add(out.syncReport());
         }
         if (mode.equals("ALL") || mode.equals("FCFS")) {
-            syntheticResults.add(runExperiment("FCFS", "Synthetic", null));
+            SimulationOutcome out = runExperiment("FCFS", "Synthetic", null);
+            syntheticResults.add(out.metricResult());
+            allSyncReports.add(out.syncReport());
         }
         if (mode.equals("ALL") || mode.equals("RR") || mode.equals("ROUNDROBIN")) {
-            syntheticResults.add(runExperiment("RR", "Synthetic", null));
+            SimulationOutcome out = runExperiment("RR", "Synthetic", null);
+            syntheticResults.add(out.metricResult());
+            allSyncReports.add(out.syncReport());
         }
 
         if (syntheticResults.size() > 1) {
@@ -71,19 +80,25 @@ public class MainSimulation {
         String swfPath = findSwfFile();
         if (swfPath != null) {
             System.out.println("\n\n" + "=".repeat(75));
-            System.out.println("  SKENARIO 2: DATASET REAL TRACE (NASA iPSC - SWF FORMAT 1000 TASKS)");
+            System.out.println("  SKENARIO 2: DATASET REAL TRACE (NASA iPSC - SWF 1000 TASKS) [3 DATACENTER]");
             System.out.println("=".repeat(75));
 
             List<MetricsCollector.ExperimentResult> nasaResults = new ArrayList<>();
 
             if (mode.equals("ALL") || mode.equals("PEFT")) {
-                nasaResults.add(runExperiment("PEFT", "NASA-iPSC", swfPath));
+                SimulationOutcome out = runExperiment("PEFT", "NASA-iPSC", swfPath);
+                nasaResults.add(out.metricResult());
+                allSyncReports.add(out.syncReport());
             }
             if (mode.equals("ALL") || mode.equals("FCFS")) {
-                nasaResults.add(runExperiment("FCFS", "NASA-iPSC", swfPath));
+                SimulationOutcome out = runExperiment("FCFS", "NASA-iPSC", swfPath);
+                nasaResults.add(out.metricResult());
+                allSyncReports.add(out.syncReport());
             }
             if (mode.equals("ALL") || mode.equals("RR") || mode.equals("ROUNDROBIN")) {
-                nasaResults.add(runExperiment("RR", "NASA-iPSC", swfPath));
+                SimulationOutcome out = runExperiment("RR", "NASA-iPSC", swfPath);
+                nasaResults.add(out.metricResult());
+                allSyncReports.add(out.syncReport());
             }
 
             if (nasaResults.size() > 1) {
@@ -95,35 +110,59 @@ public class MainSimulation {
             System.out.println("\n  [PERINGATAN] Dataset SWF tidak ditemukan di: " + SWF_FILE);
         }
 
-        // Simpan gabungan semua hasil
+        // Simpan gabungan semua hasil eksperimen
         if (!allResults.isEmpty()) {
             MetricsCollector.exportToCsv(allResults, RESULTS_DIR + "/all_results.csv");
+        }
+
+        // Simpan rekapitulasi sinkronisasi 3 Datacenter ke CSV
+        if (!allSyncReports.isEmpty()) {
+            DatacenterSynchronizer.exportSyncToCsv(allSyncReports, RESULTS_DIR + "/datacenter_sync_results.csv");
         }
 
         printFooter();
     }
 
-    private static MetricsCollector.ExperimentResult runExperiment(
+    /**
+     * Menjalankan satu eksperimen lengkap dengan 3 Datacenter.
+     *
+     * Alur Operasi:
+     *   1. Bangun 3 Datacenter Heterogen (DC-1 Entry, DC-2 Standard, DC-3 Premium)
+     *   2. Buat Broker dan pasang DatacenterMapper agar tiap VM terpetakan ke DC yang tepat
+     *   3. Submit VM list (30 VM dari 3 DC) dan Cloudlets (1000 tasks)
+     *   4. Jalankan Simulasi CloudSim Plus
+     *   5. Kumpulkan metrik performa global
+     *   6. Lakukan proses SINKRONISASI & VERIFIKASI akhir antar ke-3 Datacenter
+     */
+    private static SimulationOutcome runExperiment(
             String algorithm, String datasetName, String swfPath) throws Exception {
 
         System.out.printf("%n  +-------------------------------------------------------------+%n");
-        System.out.printf("  |  Algoritma : %-46s |%n", getAlgorithmName(algorithm));
-        System.out.printf("  |  Dataset   : %-46s |%n", datasetName);
-        System.out.printf("  |  Tasks     : %-46d |%n", MAX_TASKS);
+        System.out.printf("  |  Algoritma   : %-44s |%n", getAlgorithmName(algorithm));
+        System.out.printf("  |  Dataset     : %-44s |%n", datasetName);
+        System.out.printf("  |  Tasks       : %-44d |%n", MAX_TASKS);
+        System.out.printf("  |  Infrastruktur: %-43s |%n", "3 Datacenter (24 Host, 30 VM)");
         System.out.printf("  +-------------------------------------------------------------+%n%n");
 
         CloudSimPlus simulation = new CloudSimPlus();
 
-        // 1. Bangun Datacenter (8 Host heterogen + 30 VM)
-        System.out.println("  [1/4] Membangun Arsitektur Datacenter Cloud...");
-        DatacenterBuilder.DatacenterResult dcResult = DatacenterBuilder.build(simulation);
+        // 1. Bangun 3 Datacenter Heterogen
+        System.out.println("  [1/5] Membangun Arsitektur 3 Datacenter Heterogen...");
+        DatacenterBuilder.MultiDatacenterResult multiDcResult =
+                DatacenterBuilder.buildMultiple(simulation);
 
-        // 2. Buat Broker sesuai Algoritma
-        System.out.println("  [2/4] Menginisialisasi Datacenter Broker (" + getAlgorithmName(algorithm) + ")...");
+        // 2. Buat Datacenter Broker
+        System.out.println("  [2/5] Menginisialisasi Broker Global (" + getAlgorithmName(algorithm) + ")...");
         DatacenterBroker broker = createBroker(algorithm, simulation);
 
-        // 3. Muat Dataset (Sintetis / SWF NASA iPSC)
-        System.out.println("  [3/4] Mempersiapkan Dataset (" + datasetName + ")...");
+        // Petakan tiap VM secara spesifik ke Datacenter asalnya
+        broker.setDatacenterMapper((lastDc, vm) -> {
+            var targetDc = multiDcResult.getDatacenterForVm(vm);
+            return targetDc != null ? targetDc : lastDc;
+        });
+
+        // 3. Persiapkan Dataset
+        System.out.println("  [3/5] Mempersiapkan Dataset (" + datasetName + ")...");
         List<Cloudlet> cloudlets;
         if (swfPath != null) {
             cloudlets = SwfParser.parse(swfPath, MAX_TASKS);
@@ -131,29 +170,36 @@ public class MainSimulation {
             cloudlets = SwfParser.generateSyntheticDataset(MAX_TASKS, 42L);
         }
 
-        // 4. Submit VM dan Cloudlet ke Broker
-        broker.submitVmList(dcResult.vmList());
+        // 4. Submit seluruh VM dari ketiga DC dan seluruh Cloudlet ke Broker
+        broker.submitVmList(multiDcResult.allVms());
         broker.submitCloudletList(cloudlets);
 
         // 5. Jalankan Simulasi
-        System.out.println("  [4/4] Menjalankan Simulasi CloudSim Plus...");
+        System.out.println("  [4/5] Menjalankan Simulasi CloudSim Plus (3 Datacenter)...");
         long startTime = System.currentTimeMillis();
         simulation.start();
         long elapsedSimRealTime = System.currentTimeMillis() - startTime;
 
-        // 6. Kumpulkan dan Evaluasi Metrik
+        // 6. Kumpulkan Metrik Performa
         List<Cloudlet> finishedCloudlets = broker.getCloudletFinishedList();
-        List<Host> hostList = dcResult.datacenter().getHostList();
+        List<Host> allHosts = multiDcResult.allHosts();
+        List<Vm> allVms = multiDcResult.allVms();
 
         String algoFullName = getAlgorithmName(algorithm) + " [" + datasetName + "]";
-        MetricsCollector.ExperimentResult result = MetricsCollector.collectMetrics(
-                algoFullName, finishedCloudlets, dcResult.vmList(), hostList, simulation.clock());
+        MetricsCollector.ExperimentResult metricResult = MetricsCollector.collectMetrics(
+                algoFullName, finishedCloudlets, allVms, allHosts, simulation.clock());
 
         System.out.printf("  Simulasi selesai dalam %d ms (Real-world execution time).%n", elapsedSimRealTime);
-        MetricsCollector.printReport(result);
+        MetricsCollector.printReport(metricResult);
         MetricsCollector.printCloudletTable(finishedCloudlets, algorithm, 10);
 
-        return result;
+        // 7. SINKRONISASI & VERIFIKASI AKHIR ANTAR 3 DATACENTER
+        System.out.println("  [5/5] Melakukan Sinkronisasi & Verifikasi State Antar 3 Datacenter...");
+        DatacenterSynchronizer.MultiDatacenterSyncReport syncReport =
+                DatacenterSynchronizer.synchronizeAndVerify(
+                        algoFullName, multiDcResult, finishedCloudlets, cloudlets.size(), simulation.clock());
+
+        return new SimulationOutcome(metricResult, syncReport);
     }
 
     private static DatacenterBroker createBroker(String algorithm, CloudSimPlus simulation) {
@@ -200,17 +246,29 @@ public class MainSimulation {
         System.out.println("   Kelompok 8 - Strategi Optimasi Komputasi Awan                    ");
         System.out.println("   Departemen Teknologi Informasi, ITS                              ");
         System.out.println("                                                                    ");
+        System.out.println("   Arsitektur          : 3 Datacenter Heterogen                     ");
+        System.out.println("                         - DC-1: Entry-Level (Host A & B, VM Small) ");
+        System.out.println("                         - DC-2: Standard    (Host B & C, VM Medium)");
+        System.out.println("                         - DC-3: Premium     (Host C & D, VM Large) ");
+        System.out.println("   Kapasitas Total     : 24 Host, 30 VM, SPECpower Energy Model     ");
         System.out.println("   Algoritma Diusulkan : PEFT (Predict Earliest Finish Time)        ");
         System.out.println("   Algoritma Baseline  : FCFS, Round Robin                          ");
         System.out.println("   Simulator           : CloudSim Plus 8.0                          ");
+        System.out.println("   Fitur Sinkronisasi  : Verifikasi Sinkronisasi 3 Datacenter       ");
         System.out.println("====================================================================");
     }
 
     private static void printFooter() {
         System.out.println("\n");
         System.out.println("====================================================================");
-        System.out.println("  Seluruh eksperimen simulasi telah berhasil diselesaikan!          ");
-        System.out.println("  Hasil CSV dan ringkasan metrik tersimpan di folder 'results/'.    ");
+        System.out.println("  Seluruh eksperimen multi-datacenter telah berhasil diselesaikan!  ");
+        System.out.println("  Ketiga Datacenter telah diverifikasi dan tersinkronisasi 100%.    ");
+        System.out.println("  Hasil CSV dan ringkasan sinkronisasi tersimpan di 'results/'.     ");
         System.out.println("====================================================================");
     }
+
+    public static record SimulationOutcome(
+            MetricsCollector.ExperimentResult metricResult,
+            DatacenterSynchronizer.MultiDatacenterSyncReport syncReport
+    ) {}
 }
