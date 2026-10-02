@@ -121,7 +121,20 @@ public class DatacenterBuilder {
             // Buat VM untuk DC ini
             List<Vm> vmList = createVmsForDc(vmPes, vmRamMB, vmMips, vmCount, DC_NAMES[dcIdx]);
 
-            // Buat Datacenter CloudSim
+            // Buat Datacenter CloudSim dengan Kebijakan Alokasi Host: Best-Fit (VmAllocationPolicyBestFit)
+            // Rationale Alokasi Host:
+            // 1. Setiap Datacenter memiliki 8 Host fisik (masing-masing 8 PE, total 64 PE) dan 10 VM.
+            //    - DC-1: 10 VM Small (1 PE, 1 GB RAM) dialokasikan ke 8 Host (4 Tipe A + 4 Tipe B).
+            //    - DC-2: 10 VM Medium (2 PE, 2 GB RAM) dialokasikan ke 8 Host (4 Tipe B + 4 Tipe C).
+            //    - DC-3: 10 VM Large (4 PE, 4 GB RAM) dialokasikan ke 8 Host (4 Tipe C + 4 Tipe D).
+            // 2. Pemahaman Best-Fit vs First-Fit:
+            //    - First-Fit: Memilih host pertama yang memiliki resource mencukupi tanpa memikirkan sisa kapasitas.
+            //    - Best-Fit: Mengevaluasi seluruh host dan memilih host dengan sisa resource (MIPS & RAM) paling minimal
+            //      setelah VM ditempatkan. Hal ini memadatkan (packing) penempatan VM, mengurangi fragmentasi resource,
+            //      dan mendukung efisiensi konsumsi daya (SPECpower) karena host yang tidak terpakai tetap berada pada
+            //      tingkat idle terendah atau dapat dimatikan.
+            // 3. Distribusi: Karena terdapat 10 VM dan 8 Host pada tiap DC, secara rata-rata 6 Host menampung 1 VM
+            //    dan 2 Host menampung 2 VM, seluruhnya berada jauh di bawah batas maksimum kapasitas 8 PE per host.
             Datacenter datacenter = new DatacenterSimple(
                     simulation, hostList, new VmAllocationPolicyBestFit());
             datacenter.setName(DC_NAMES[dcIdx]);

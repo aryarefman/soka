@@ -36,7 +36,7 @@
   - [1.1 Latar Belakang dan Permasalahan](#11-latar-belakang-dan-permasalahan)
   - [1.2 Pendekatan Solusi PEFT](#12-pendekatan-solusi-peft)
 - [2. Arsitektur Datacenter Cloud](#2-arsitektur-datacenter-cloud)
-  - [2.1 Konfigurasi Host Heterogen](#21-konfigurasi-host-heterogen-8-unit)
+  - [2.1 Konfigurasi Host Heterogen (24 Unit pada 3 Datacenter)](#21-konfigurasi-host-heterogen-24-unit-pada-3-datacenter)
   - [2.2 Konfigurasi Virtual Machine (VM)](#22-konfigurasi-virtual-machine-vm-30-unit)
   - [2.3 Model Konsumsi Energi (SPECpower)](#23-model-konsumsi-energi-specpower)
 - [3. Implementasi Algoritma Penjadwalan](#3-implementasi-algoritma-penjadwalan)
@@ -87,62 +87,63 @@ Sesuai dokumen rancangan [Tugas 3](Tugas_3_Kelompok_8%20(2).pdf), simulasi diban
 
 ```mermaid
 flowchart TD
-    subgraph Datacenter ["1 Datacenter Tunggal"]
+    subgraph MultiDC ["Infrastruktur Multi-Datacenter (3 Datacenter Heterogen)"]
         direction TB
-        subgraph PhysicalHost ["8 Host Heterogen"]
-            direction TB
-            H1["Tipe A (2 Unit): 8 PE, 1.000 MIPS/core"]
-            H2["Tipe B (2 Unit): 8 PE, 1.500 MIPS/core"]
-            H3["Tipe C (2 Unit): 8 PE, 2.000 MIPS/core"]
-            H4["Tipe D (2 Unit): 8 PE, 3.000 MIPS/core"]
+        subgraph DC1 ["DC-1: Entry-Level"]
+            H_DC1["8 Host: 4 Tipe A (1.000 MIPS) + 4 Tipe B (1.500 MIPS)<br/>Kapasitas: 80.000 MIPS, 96 GB RAM"]
+            VM_S["10 VM Small (1 PE, 1.000 MIPS, 1 GB RAM)"]
+            H_DC1 -->|Best-Fit| VM_S
         end
-
-        AllocPolicy["Kebijakan Alokasi VM:<br/>Best-Fit (Minimasi Resource Sisa)"]
-        AllocPolicy -. Menempatkan VM .-> PhysicalHost
-
-        subgraph VirtualMachines ["30 VM Heterogen (Space-Shared)"]
-            VM_S["Small (10 Unit): 1 PE, 1.000 MIPS, 1 GB RAM"]
-            VM_M["Medium (10 Unit): 2 PE, 1.500 MIPS, 2 GB RAM"]
-            VM_L["Large (10 Unit): 4 PE, 2.000 MIPS, 4 GB RAM"]
+        subgraph DC2 ["DC-2: Standard"]
+            H_DC2["8 Host: 4 Tipe B (1.500 MIPS) + 4 Tipe C (2.000 MIPS)<br/>Kapasitas: 112.000 MIPS, 160 GB RAM"]
+            VM_M["10 VM Medium (2 PE, 1.500 MIPS, 2 GB RAM)"]
+            H_DC2 -->|Best-Fit| VM_M
         end
-
-        PhysicalHost ==> VirtualMachines
+        subgraph DC3 ["DC-3: Premium"]
+            H_DC3["8 Host: 4 Tipe C (2.000 MIPS) + 4 Tipe D (3.000 MIPS)<br/>Kapasitas: 160.000 MIPS, 224 GB RAM"]
+            VM_L["10 VM Large (4 PE, 2.000 MIPS, 4 GB RAM)"]
+            H_DC3 -->|Best-Fit| VM_L
+        end
     end
 
-    subgraph Workload ["Beban Kerja Komputasi"]
-        Tasks["1.000 Task (Cloudlets)<br/>• Model: Bag-of-Tasks (Independen)<br/>• Eksekusi: Non-preemptive (Space-Shared)<br/>• Dataset: Sintetis (1.000 Task) & NASA iPSC SWF (1.000 Task)"]
+    subgraph BrokerWorkload ["Beban Kerja & Penjadwalan Terpusat"]
+        Tasks["1.000 Task (Cloudlets)<br/>• Model: Bag-of-Tasks (Independen, Non-preemptive)<br/>• Dataset: Sintetis (1.000 Task) & NASA iPSC SWF (1.000 Task)"]
+        GlobalBroker["Global Datacenter Broker<br/>(PEFT / FCFS / Round Robin)"]
+        Tasks --> GlobalBroker
     end
 
-    Workload -->|"Dijadwalkan oleh PEFT / FCFS / Round Robin"| VirtualMachines
+    GlobalBroker ==>|"Mapping & Submission Global"| MultiDC
+    MultiDC ==>|"Post-Simulation Barrier & State Verification"| Sync["DatacenterSynchronizer<br/>(100% Data Integrity & SPECpower Consolidation)"]
 ```
 
-### 2.1 Konfigurasi Host Heterogen (8 Unit)
-Setiap host memiliki 8 core/PE, penyimpanan 1 TB, antarmuka jaringan 10 Gbps, dan model konsumsi daya berbasis SPECpower:
+### 2.1 Konfigurasi Host Heterogen (24 Unit pada 3 Datacenter)
+Setiap datacenter dilengkapi 8 host fisik (masing-masing 8 core/PE, penyimpanan 1 TB, antarmuka jaringan 10 Gbps, model daya linier SPECpower):
 
-| Tipe Host | Core (PE) | MIPS/Core | RAM | Bandwidth | Idle Power | Max Power | Jumlah | Total MIPS |
-| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| Tipe A | 8 | 1.000 | 8 GB | 10 Gbps | 93.7 W | 135.0 W | 2 | 16.000 |
-| Tipe B | 8 | 1.500 | 16 GB | 10 Gbps | 105.0 W | 175.0 W | 2 | 24.000 |
-| Tipe C | 8 | 2.000 | 24 GB | 10 Gbps | 120.0 W | 225.0 W | 2 | 32.000 |
-| Tipe D | 8 | 3.000 | 32 GB | 10 Gbps | 140.0 W | 300.0 W | 2 | 48.000 |
-| **Total** | **64 Core** | - | **160 GB** | - | - | - | **8 Unit** | **120.000 MIPS** |
+| Datacenter | Tipe Host | Core (PE) | MIPS/Core | RAM | Bandwidth | Idle Power | Max Power | Jumlah | Total MIPS |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **DC-1 (Entry-Level)** | Tipe A | 8 | 1.000 | 8 GB | 10 Gbps | 93.7 W | 135.0 W | 4 | 32.000 |
+| | Tipe B | 8 | 1.500 | 16 GB | 10 Gbps | 105.0 W | 175.0 W | 4 | 48.000 |
+| **DC-2 (Standard)** | Tipe B | 8 | 1.500 | 16 GB | 10 Gbps | 105.0 W | 175.0 W | 4 | 48.000 |
+| | Tipe C | 8 | 2.000 | 24 GB | 10 Gbps | 120.0 W | 225.0 W | 4 | 64.000 |
+| **DC-3 (Premium)** | Tipe C | 8 | 2.000 | 24 GB | 10 Gbps | 120.0 W | 225.0 W | 4 | 64.000 |
+| | Tipe D | 8 | 3.000 | 32 GB | 10 Gbps | 140.0 W | 300.0 W | 4 | 96.000 |
+| **Total Global** | **4 Tipe** | **192 Core** | - | **480 GB** | - | - | - | **24 Unit** | **352.000 MIPS** |
 
 ### 2.2 Konfigurasi Virtual Machine (VM) (30 Unit)
-VM dibagi menjadi tiga kelas ukuran dengan kebijakan penjadwalan `CloudletSchedulerSpaceShared`:
+VM dibagi menjadi tiga kelas ukuran yang dialokasikan menggunakan kebijakan `VmAllocationPolicyBestFit` dan dieksekusi secara non-preemptive (`CloudletSchedulerSpaceShared`):
 
-| Kelas VM | PE (vCPU) | RAM | MIPS per PE | Bandwidth | Storage | Jumlah Unit | Deskripsi Beban |
-| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| Small | 1 | 1.024 MB (1 GB) | 1.000 MIPS | 250 Mbps | 10 GB | 10 unit | Task ringan (1 PE) |
-| Medium | 2 | 2.048 MB (2 GB) | 1.500 MIPS | 250 Mbps | 10 GB | 10 unit | Task sedang (1–2 PE) |
-| Large | 4 | 4.096 MB (4 GB) | 2.000 MIPS | 250 Mbps | 10 GB | 10 unit | Task berat (1–4 PE) |
+| Datacenter Asal | Kelas VM | PE (vCPU) | RAM | MIPS per PE | Bandwidth | Storage | Jumlah Unit | Deskripsi Beban |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| DC-1 (Entry-Level) | Small | 1 | 1.024 MB (1 GB) | 1.000 MIPS | 250 Mbps | 10 GB | 10 unit | Task ringan (1 PE) |
+| DC-2 (Standard) | Medium | 2 | 2.048 MB (2 GB) | 1.500 MIPS | 250 Mbps | 10 GB | 10 unit | Task sedang (1-2 PE) |
+| DC-3 (Premium) | Large | 4 | 4.096 MB (4 GB) | 2.000 MIPS | 250 Mbps | 10 GB | 10 unit | Task berat (1-4 PE) |
 
 ### 2.3 Model Konsumsi Energi (SPECpower)
-Konsumsi energi dihitung menggunakan model daya linier berbasis benchmark **SPECpower** (Beloglazov & Buyya, 2012):
+Konsumsi energi dihitung secara kumulatif dari seluruh 24 host fisik menggunakan model daya linier berbasis benchmark nyata **SPECpower** (Beloglazov & Buyya, 2012):
 $$E_{\text{host}} = P_{\text{max}} \times t_{\text{busy}} + P_{\text{idle}} \times (\text{Makespan} - t_{\text{busy}})$$
-$$\text{Total Energi (kWh)} = \frac{\sum E_{\text{host}} \text{ (Joule)}}{3.600.000}$$
+$$\text{Total Energi (kWh)} = \frac{\sum_{h=1}^{24} E_{\text{host}, h} \text{ (Joule)}}{3.600.000}$$
 
 ---
-
 ## 3. Implementasi Algoritma Penjadwalan
 
 ### 3.1 Algoritma Utama: PEFT (*Predict Earliest Finish Time*)
@@ -203,8 +204,8 @@ Seluruh skenario pengujian dieksekusi dengan 1.000 task berhasil diselesaikan ta
 | **Throughput (task/s)** | **0,2389** | 0,2021 | 0,2186 | +18,21% | Peningkatan laju penyelesaian tugas |
 | **Avg CPU Utilization** | **38,74%** | 31,95% | 34,57% | +21,25% | Peningkatan utilisasi prosesor host |
 | **Load Balance (Std Dev)** | **5,32** | 20,55 | 20,55 | -74,11% | Pemerataan alokasi beban antar-VM |
-| **Konsumsi Energi (J)** | **6.139.056,7 J** | 7.048.601,1 J | 6.608.935,1 J | -12,90% | Penghematan 909.544 Joule |
-| **Konsumsi Energi (kWh)**| **1,7053 kWh** | 1,9579 kWh | 1,8358 kWh | -12,90% | Penurunan konsumsi energi operasional |
+| **Konsumsi Energi (J)** | **16.434.125,3 J** | 18.717.355,1 J | 17.701.762,1 J | -12,20% | Penghematan 2.283.230 Joule (3 DC) |
+| **Konsumsi Energi (kWh)**| **4,5650 kWh** | 5,1993 kWh | 4,9172 kWh | -12,20% | Penurunan konsumsi energi total (24 Host) |
 
 ### 5.2 Hasil Uji Coba Dataset Real Trace NASA iPSC (1.000 Task)
 
@@ -215,10 +216,25 @@ Seluruh skenario pengujian dieksekusi dengan 1.000 task berhasil diselesaikan ta
 | **Turnaround Time (s)** | **198,95 s** | 262,44 s | 262,44 s | -24,19% | Penurunan waktu tanggap 63,49 s/task |
 | **Waiting Time (s)** | **0,00 s** | 20,54 s | 20,54 s | -100,00% | Waktu antre tereliminasi penuh |
 | **Throughput (task/s)** | **0,0055** | 0,0055 | 0,0055 | 0,00% | Mengikuti laju kedatangan trace |
-| **Konsumsi Energi (J)** | **171.177.116,6 J**| 172.363.475,9 J| 172.363.475,9 J| -0,69% | Penghematan 1.186.359 Joule |
-| **Konsumsi Energi (kWh)**| **47,5492 kWh** | 47,8787 kWh | 47,8787 kWh | -0,69% | Penurunan konsumsi energi total |
+| **Konsumsi Energi (J)** | **504.928.356,7 J**| 507.447.518,3 J| 507.447.518,3 J| -0,50% | Penghematan 2.519.162 Joule (3 DC) |
+| **Konsumsi Energi (kWh)**| **140,2579 kWh** | 140,9576 kWh | 140,9576 kWh | -0,50% | Penurunan konsumsi energi total (24 Host) |
 
-### 5.3 Kesimpulan Analisis Hasil
+
+### 5.3 Rekapitulasi Sinkronisasi dan Distribusi Beban 3 Datacenter
+Berdasarkan berkas evaluasi sinkronisasi [datacenter_sync_results.csv](results/datacenter_sync_results.csv), beban terdistribusi lintas 3 Datacenter dengan verifikasi barrier 100% tuntas:
+
+| Skenario & Algoritma | Datacenter | Host | VM | Task Selesai | Proporsi Beban (%) | Makespan DC (s) | Energi SPECpower (J) | Status Sinkron |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Sintetis - PEFT** | DC-1 (Entry-Level) | 8 | 10 | 290 | 29,00% | 103,86 s | 3.330.831 J | OK (Synchronized) |
+| | DC-2 (Standard) | 8 | 10 | 393 | 39,30% | 747,56 s | 3.894.180 J | OK (Synchronized) |
+| | DC-3 (Premium) | 8 | 10 | 317 | 31,70% | 4.185,59 s | 6.705.092 J | OK (Synchronized) |
+| | **Total Global** | **24** | **30** | **1.000** | **100,00%** | **4.185,59 s** | **16.434.125 J** | **100% Terverifikasi** |
+| **NASA - PEFT** | DC-1 (Entry-Level) | 8 | 10 | 0 | 0,00% | 0,00 s | 143.262.954 J | OK (Synchronized) |
+| | DC-2 (Standard) | 8 | 10 | 0 | 0,00% | 0,00 s | 162.225.288 J | OK (Synchronized) |
+| | DC-3 (Premium) | 8 | 10 | 1.000 | 100,00% | 180.250,21 s | 193.275.907 J | OK (Synchronized) |
+| | **Total Global** | **24** | **30** | **1.000** | **100,00%** | **180.250,21 s** | **504.928.357 J** | **100% Terverifikasi** |
+
+### 5.4 Kesimpulan Analisis Hasil
 1. **Makespan dan Efisiensi Waktu**: Pada dataset sintetis dengan beban kedatangan padat, PEFT mereduksi makespan sebesar 15,39% (761,40 detik lebih singkat) dibandingkan FCFS dan 8,51% dibandingkan Round Robin. Hal ini dicapai melalui pemetaan task berukuran besar ke VM dengan ketersediaan core terawal dan kapasitas MIPS tertinggi.
 2. **Kualitas Layanan (QoS)**: Pada trace NASA iPSC dengan interval kedatangan renggang, PEFT meniadakan waktu tunggu antrean (waiting time = 0,00 s) dan memangkas turnaround time rata-rata sebesar 24,19% (dari 262,44 s menjadi 198,95 s).
 3. **Efisiensi Konsumsi Energi**: Pengurangan durasi eksekusi host secara langsung menurunkan konsumsi energi aktif, menghasilkan penghematan daya sebesar 12,90% (909.544 Joule) pada dataset sintetis dan 1.186.359 Joule pada trace NASA iPSC.

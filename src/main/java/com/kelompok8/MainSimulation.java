@@ -168,6 +168,10 @@ public class MainSimulation {
             cloudlets = SwfParser.parse(swfPath, MAX_TASKS);
         } else {
             cloudlets = SwfParser.generateSyntheticDataset(MAX_TASKS, 42L);
+            Path synCsv = Path.of(DATASET_DIR, "synthetic_dataset_1000.csv");
+            if (!Files.exists(synCsv)) {
+                SwfParser.exportSyntheticDatasetToCsv(cloudlets, synCsv.toString());
+            }
         }
 
         // 4. Submit seluruh VM dari ketiga DC dan seluruh Cloudlet ke Broker

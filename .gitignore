@@ -22,3 +22,6 @@ Desktop.ini
 *.log
 pdf_output.txt
 scratch/
+*.bak
+*Updated_3DC*
+*.tmp*

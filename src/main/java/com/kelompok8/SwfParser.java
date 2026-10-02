@@ -184,6 +184,11 @@ public class SwfParser {
         // Acak urutan task agar bercampur secara realistis
         Collections.shuffle(cloudlets, rand);
 
+        // Tetapkan ID berurutan untuk mempermudah pelacakan dan bukti dataset
+        for (int i = 0; i < cloudlets.size(); i++) {
+            cloudlets.get(i).setId(i);
+        }
+
         System.out.printf("  [Sintetis] Dibangkitkan %d tasks (Kecil=%d, Sedang=%d, Besar=%d)%n",
                 numTasks, smallCount, mediumCount, largeCount);
 
@@ -203,5 +208,23 @@ public class SwfParser {
         }
 
         return cloudlet;
+    }
+
+    /**
+     * Menyimpan dataset sintetis ke berkas CSV sebagai bukti otentik dataset yang dibangkitkan.
+     * Memenuhi kriteria verifikasi: mendokumentasikan spesifikasi setiap cloudlet (ID, length MI, PE, arrival).
+     */
+    public static void exportSyntheticDatasetToCsv(List<Cloudlet> cloudlets, String filePath) {
+        try (PrintWriter writer = new PrintWriter(new FileWriter(filePath))) {
+            writer.println("TaskId,LengthMI,PesNumber,SubmissionDelay(s),FileSize(B),OutputSize(B)");
+            for (Cloudlet c : cloudlets) {
+                writer.printf("%d,%d,%d,%.4f,%d,%d%n",
+                        c.getId(), c.getLength(), c.getPesNumber(),
+                        c.getSubmissionDelay(), c.getFileSize(), c.getOutputSize());
+            }
+            System.out.println("  [Dataset Bukti] Dataset sintetis berhasil disimpan ke: " + filePath);
+        } catch (IOException e) {
+            System.err.println("  [Peringatan] Gagal menyimpan dataset sintetis: " + e.getMessage());
+        }
     }
 }
